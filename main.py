@@ -15,7 +15,8 @@ class BlackyApp:
     def __init__(self):
         self.cli_agent = CLIAssistant()
         self.yt_agent = YouTubeAgent()
-        self.active_yt_id = self.yt_agent.auto_load_latest()
+        # Auto-connect to the last indexed YouTube video if present in ChromaDB
+        self.active_yt_id = None
         self.active_doc = None
 
     def display_banner(self):
@@ -27,78 +28,89 @@ class BlackyApp:
         help_text = """
             ### Blacky AI Command Directory
             * **`/yt <link>`** : Load, index, and summarize a YouTube video.
-            * **`/yt <question>`** : Query active YouTube video transcript via RAG.
-            * **`/yt list`** : List all stored YouTube videos in local ChromaDB.
-            * **`/yt switch <video_id>`** : Switch active YouTube session to another indexed video.
-            * **`/doc <file_path>`** : Index a local document (PDF/TXT/Docx) into RAG.
-            * **`/doc <question>`** : Query active document via RAG.
-            * **`/exit` or `q`** : Exit active mode or quit Blacky CLI.
+            * **`/yt list`** or **`/yt ls`** : List all YouTube videos saved in ChromaDB.
+            * **`/yt switch <number/id>`** : Switch active video session.
+            * **`<any prompt>` (while in YT Mode)** : Directly query active video RAG context.
+            * **`/exit` or `q`** : Exit YouTube Mode back to General Chat.
             * **`/clear`** : Clear terminal screen.
-            * **`<any prompt>`** : Standard General Gemini Chat (0 RAG overhead).
+            * **`<any prompt>` (in General Mode)** : Standard General Gemini Chat.
         """
         console.print(Panel(Markdown(help_text.strip()), title="[bold cyan]Help & Syntax[/bold cyan]", border_style="cyan"))
 
     def handle_youtube_route(self, payload: str):
-            if not payload:
-                if self.active_yt_id:
-                    console.print(f"[yellow]Active YouTube Session:[yellow] {self.active_yt_id}. Use '/yt <question>' to query.")
-                else:
-                    console.print("[red]Usage:[red] /yt <URL> | /yt <question> | /yt list | /yt switch <video_id>")
+        if not payload:
+            if self.active_yt_id:
+                console.print(f"[yellow]Active YouTube Session:[yellow] {self.active_yt_id}. Ask any question or use '/exit'.")
+            else:
+                console.print("[red]Usage:[red] /yt <URL> | /yt list | /yt switch <number_or_id>")
+            return
+
+        # 1. COMMAND: /yt list
+        if payload.lower() in ["list", "ls"]:
+            videos = self.yt_agent.list_indexed_videos()
+            if not videos:
+                console.print("[yellow]No YouTube videos found in local ChromaDB.[/yellow]")
                 return
 
-            # 1. COMMAND: /yt list (List all stored videos)
-            if payload.lower() in ["list", "ls"]:
-                videos = self.yt_agent.list_indexed_videos()
-                if not videos:
-                    console.print("[yellow]No YouTube videos found in local ChromaDB.[/yellow]")
+            console.print("\n[bold magenta]=== Stored YouTube Videos in Vector DB ===[/bold magenta]")
+            for idx, vid in enumerate(videos, 1):
+                active_flag = " [bold green](Active)[/bold green]" if vid['video_id'] == self.active_yt_id else ""
+                console.print(f"{idx}. [bold cyan]{vid['title']}[/bold cyan] [dim](ID: {vid['video_id']})[/dim]{active_flag}")
+            console.print("\n[dim]Switch active video using: /yt switch <number>[/dim]\n")
+            return
+
+        # 2. COMMAND: /yt switch <index_or_video_id>
+        if payload.lower().startswith("switch"):
+            target = payload[6:].strip()
+            if not target:
+                console.print("[red]Usage:[red] /yt switch <number or video_id>")
+                return
+
+            videos = self.yt_agent.list_indexed_videos()
+            target_id = target
+
+            if target.isdigit():
+                idx = int(target) - 1
+                if 0 <= idx < len(videos):
+                    target_id = videos[idx]["video_id"]
+                else:
+                    console.print(f"[bold red]Invalid selection number: {target}[/bold red]")
                     return
 
-                console.print("\n[bold magenta]=== Stored YouTube Videos in Vector DB ===[/bold magenta]")
-                for idx, vid in enumerate(videos, 1):
-                    active_flag = " [bold green](Active)[/bold green]" if vid['video_id'] == self.active_yt_id else ""
-                    console.print(f"{idx}. [cyan]ID:[/cyan] {vid['video_id']} | [dim]Chunks:[/dim] {vid['chunk_count']}{active_flag}")
-                console.print("\n[dim]Switch active video using: /yt switch <video_id>[/dim]\n")
-                return
-
-            # 2. COMMAND: /yt switch <video_id_or_url>
-            if payload.lower().startswith("switch "):
-                target_id = payload[7:].strip()
-                res = self.yt_agent.switch_active_video(target_id)
-                if res.startswith("[SUCCESS]"):
-                    self.active_yt_id = self.yt_agent.current_video_id
-                    console.print(f"[bold green]{res}[/bold green]")
-                else:
-                    console.print(f"[bold red]{res}[/bold red]")
-                return
-
-            # 3. Handle YouTube URLs or Questions
-            extracted_id = self.yt_agent.extract_video_id(payload)
-
-            # New URL / Re-index
-            if extracted_id:
-                console.print(f"[bold cyan][RAG][/bold cyan] Loading YouTube Video [[bold yellow]{extracted_id}[/bold yellow]]...")
-                with thinking_status():
-                    summary = self.yt_agent.process_youtube_query(url_or_input=payload)
-
-                if not summary.startswith("[ERROR]"):
-                    self.active_yt_id = extracted_id
-                    console.print(Panel(Markdown(summary), title=f"[bold magenta]YouTube Summary ({extracted_id})[/bold magenta]", border_style="magenta"))
-                    console.print("[dim]YouTube Mode active. Use '/yt <question>' or '/exit' to return to general chat.[/dim]\n")
-                else:
-                    console.print(f"[bold red]{summary}[/bold red]")
-
-            # Question on active video session
-            elif self.active_yt_id:
-                console.print(f"[bold cyan][RAG Search][/bold cyan] Querying transcript for [{self.active_yt_id}]...")
-                with thinking_status():
-                    answer = self.yt_agent.process_youtube_query(
-                        url_or_input=self.active_yt_id,
-                        user_question=payload
-                    )
-                console.print(Panel(Markdown(answer), title=f"[bold magenta]YouTube RAG Response[/bold magenta]", border_style="magenta"))
-
+            res = self.yt_agent.switch_active_video(target_id)
+            if res.startswith("[SUCCESS]"):
+                self.active_yt_id = self.yt_agent.current_video_id
+                console.print(f"[bold green]{res}[/bold green]")
             else:
-                console.print("[bold red]No active YouTube session.[/bold red] Load a video or list existing ones using: [cyan]/yt list[/cyan]")
+                console.print(f"[bold red]{res}[/bold red]")
+            return
+
+        # 3. Process new YouTube URL or query active video
+        extracted_id = self.yt_agent.extract_video_id(payload)
+
+        if extracted_id:
+            console.print(f"[bold cyan][RAG][/bold cyan] Loading YouTube Video [[bold yellow]{extracted_id}[/bold yellow]]...")
+            with thinking_status():
+                summary = self.yt_agent.process_youtube_query(url_or_input=payload)
+
+            if not summary.startswith("[ERROR]"):
+                self.active_yt_id = extracted_id
+                console.print(Panel(Markdown(summary), title=f"[bold magenta]YouTube Summary ({extracted_id})[/bold magenta]", border_style="magenta"))
+                console.print("[dim]YouTube Mode active. Ask any question about this video or type '/exit'.[/dim]\n")
+            else:
+                console.print(f"[bold red]{summary}[/bold red]")
+        
+        elif self.active_yt_id:
+            # Query active video directly
+            console.print(f"[bold cyan][RAG Search][/bold cyan] Querying transcript for [{self.active_yt_id}]...")
+            with thinking_status():
+                answer = self.yt_agent.process_youtube_query(
+                    url_or_input=self.active_yt_id,
+                    user_question=payload
+                )
+            console.print(Panel(Markdown(answer), title=f"[bold magenta]YouTube RAG Response[/bold magenta]", border_style="magenta"))
+        else:
+            console.print("[bold red]No active YouTube session.[/bold red] Load a video using: [cyan]/yt <URL>[/cyan]")
 
     def run(self):
         self.display_banner()
@@ -119,7 +131,7 @@ class BlackyApp:
                 if not user_input:
                     continue
 
-                # Built-in exit commands
+                # 1. Exit Commands
                 if user_input.lower() in ["exit", "q", "/exit"]:
                     if self.active_yt_id or self.active_doc:
                         console.print(f"[yellow]Exited active RAG session. Back to General Chat.[/yellow]")
@@ -130,7 +142,7 @@ class BlackyApp:
                     else:
                         break
 
-                # Utility commands
+                # 2. Utility commands
                 if user_input.lower() == "/clear":
                     console.clear()
                     self.display_banner()
@@ -140,19 +152,30 @@ class BlackyApp:
                     self.print_help()
                     continue
 
-                # Route 1: Explicit /yt command
+                # 3. Explicit /yt commands (/yt list, /yt switch, /yt <URL>)
                 if user_input.startswith("/yt"):
                     payload = user_input[3:].strip()
                     self.handle_youtube_route(payload)
                     continue
 
-                # Route 2: Auto-detect bare YouTube URL
+                # 4. Auto-detect bare YouTube URL pasted into terminal
                 extracted_id = self.yt_agent.extract_video_id(user_input)
                 if extracted_id:
                     self.handle_youtube_route(user_input)
                     continue
 
-                # Route 3: Standard General Chat
+                # 5. AUTOMATIC ROUTING: If in YT mode, send ALL regular questions to YouTube RAG
+                if self.active_yt_id:
+                    console.print(f"[bold cyan][RAG Search][/bold cyan] Querying video transcript...")
+                    with thinking_status():
+                        answer = self.yt_agent.process_youtube_query(
+                            url_or_input=self.active_yt_id,
+                            user_question=user_input
+                        )
+                    console.print(Panel(Markdown(answer), title=f"[bold magenta]YouTube RAG Response[/bold magenta]", border_style="magenta"))
+                    continue
+
+                # 6. Standard General Chat (when not in YT or DOC mode)
                 with thinking_status():
                     response = self.cli_agent.handle_user_query(user_input)
 
