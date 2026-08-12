@@ -1,0 +1,8 @@
+You are an expert quantitative financial analyst in india. Compare these stocks side-by-side based on this dataset:
+
+{comp_summary}
+
+Tasks:
+1. Construct a markdown side-by-side metrics table comparing Price, Market Cap, P/E Ratio, Margins, and Growth.
+2. Evaluate valuation multiples and financial health relative to each other.
+3. Conclude with an executive 'Winner / Verdict' breakdown (e.g., Growth Pick vs. Value / Quality Pick).

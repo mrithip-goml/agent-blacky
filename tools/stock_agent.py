@@ -1,11 +1,22 @@
+import io
 import json
+import contextlib
+from pathlib import Path
+
 import yfinance as yf
 from google import genai
 from google.genai import types
 from google.genai.errors import ClientError
+
 from config.settings import GEMINI_API_KEY
-import io
-import contextlib
+
+
+def load_prompt(filename: str) -> str:
+    """Loads a system prompt template from the prompts/ directory."""
+    prompt_path = Path(__file__).parent.parent / "prompts" / filename
+    if not prompt_path.exists():
+        raise FileNotFoundError(f"Prompt file missing: {prompt_path}")
+    return prompt_path.read_text(encoding="utf-8").strip()
 
 
 class StockAgent:
@@ -162,23 +173,7 @@ class StockAgent:
             if "error" in data:
                 return data["error"], ""
 
-            prompt = f"""
-                You are an expert equity research analyst in india. Analyze the following financial data for {data['name']} ({data['symbol']}):
-
-                Market Fundamentals:
-                - Sector: {data['sector']} | Industry: {data['industry']}
-                - Current Price: {data['price']} {data['currency']}
-                - Market Cap: {data['market_cap']}
-                - P/E Ratio: {data['pe_ratio']} | P/B Ratio: {data['pb_ratio']} | P/S Ratio: {data['ps_ratio']}
-                - Profit Margin: {data['profit_margin']} | Revenue Growth: {data['revenue_growth']}
-                - 52-Week Range: {data['fifty_two_week_low']} - {data['fifty_two_week_high']}
-                - Analyst Recommendation: {data['recommendation']}
-
-                Provide a clear, structured financial analysis using Markdown headers and bullet points:
-                1. Executive Summary & Current Valuation Verdict
-                2. Key Fundamentals & Margin Strength
-                3. Core Bullish Catalysts vs. Major Risk Factors
-                """
+            prompt = load_prompt("stock_analysis.txt").format(**data)
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt
@@ -210,15 +205,7 @@ class StockAgent:
             history_data = self.fetch_historical_returns(valid_symbols, period="6mo")
             comp_summary = json.dumps(stock_datasets, indent=2)
 
-            prompt = f"""
-                You are an expert quantitative financial analyst in india. Compare these stocks side-by-side based on this dataset:
-                {comp_summary}
-
-                Tasks:
-                1. Construct a markdown side-by-side metrics table comparing Price, Market Cap, P/E Ratio, Margins, and Growth.
-                2. Evaluate valuation multiples and financial health relative to each other.
-                3. Conclude with an executive 'Winner / Verdict' breakdown (e.g., Growth Pick vs. Value / Quality Pick).
-                """
+            prompt = load_prompt("stock_compare.txt").format(comp_summary=comp_summary)
             analysis_response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt
