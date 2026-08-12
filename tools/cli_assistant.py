@@ -2,13 +2,8 @@ import subprocess
 import re
 import asyncio
 from pathlib import Path
-from google import genai
-from google.genai import types
-from google.genai.errors import APIError, ClientError
-from rich.console import Console
+from core.llm import GeminiEngine
 from config.settings import GEMINI_API_KEY, GEMINI_MODEL
-
-console = Console()
 
 def load_prompt(filename: str) -> str:
     """Helper to load system prompts from the prompts/ directory."""
@@ -20,11 +15,7 @@ def load_prompt(filename: str) -> str:
 class CLIAssistant:
     def __init__(self, api_key: str = None, mcp_manager=None):
         self.api_key = api_key or GEMINI_API_KEY
-        if not self.api_key:
-            raise ValueError("GEMINI_API_KEY is missing! Check your .env file.")
-        
-        self.client = genai.Client(api_key=self.api_key)
-        self.model = GEMINI_MODEL
+        self.engine = GeminiEngine(api_key=self.api_key, mcp_manager=mcp_manager)
         self.mcp_manager = mcp_manager
 
         self.router_prompt = load_prompt("cli_router.txt")
@@ -38,31 +29,6 @@ class CLIAssistant:
             r">\s*/dev/sd", r"mkfs", r"dd\s+if="
         ]
 
-    def _call_gemini_safe(self, contents, system_instruction=None, temperature=0.1, tools=None):
-        """Wrapper around Gemini API calls to catch errors gracefully."""
-        config_kwargs = {"temperature": temperature}
-        if system_instruction:
-            config_kwargs["system_instruction"] = system_instruction
-        if tools:
-            config_kwargs["tools"] = tools
-
-        config = types.GenerateContentConfig(**config_kwargs)
-
-        try:
-            return self.client.models.generate_content(
-                model=self.model,
-                contents=contents,
-                config=config
-            )
-        except ClientError as e:
-            if e.code == 429 or "RESOURCE_EXHAUSTED" in str(e):
-                return "[ERROR] Gemini API Quota Exceeded (429 Rate Limit)."
-            return f"[ERROR] API Client Error: {str(e)}"
-        except APIError as e:
-            return f"[ERROR] Gemini API Exception: {str(e)}"
-        except Exception as e:
-            return f"[ERROR] Unexpected Error: {str(e)}"
-
     def is_safe_command(self, command: str) -> tuple[bool, str]:
         for pattern in self.forbidden_patterns:
             if re.search(pattern, command, re.IGNORECASE):
@@ -71,13 +37,13 @@ class CLIAssistant:
 
     def requires_system_execution(self, user_prompt: str) -> bool:
         prompt = f"{self.router_prompt}\n\nUser Prompt: {user_prompt}"
-        res = self._call_gemini_safe(contents=prompt, temperature=0.0)
+        res = self.engine.call_gemini_safe(contents=prompt, temperature=0.0)
         if isinstance(res, str):
             return False
         return "EXEC" in res.text.strip().upper()
 
     def generate_command(self, user_prompt: str) -> str:
-        res = self._call_gemini_safe(
+        res = self.engine.call_gemini_safe(
             contents=user_prompt,
             system_instruction=self.generator_prompt,
             temperature=0.1
@@ -135,72 +101,17 @@ class CLIAssistant:
                 "Include the executed command at the end in parentheses."
             )
 
-            res = self._call_gemini_safe(
+            res = self.engine.call_gemini_safe(
                 contents=summary_prompt,
                 system_instruction=self.summarizer_prompt
             )
             return res if isinstance(res, str) else res.text.strip()
 
-        # 2. General Chat Route with MCP Tool Integration
-        mcp_tools = None
-        if self.mcp_manager and self.mcp_manager.is_connected:
-            try:
-                declarations = await self.mcp_manager.get_gemini_tools()
-                if declarations:
-                    mcp_tools = [types.Tool(function_declarations=declarations)]
-            except Exception as e:
-                console.print(f"[dim yellow]Warning: Failed to load MCP tool declarations: {e}[/dim yellow]")
-                mcp_tools = None
-
-        # Build initial turn contents
-        contents = [types.Content(role="user", parts=[types.Part.from_text(text=user_input)])]
-
-        max_turns = 5
-        current_turn = 0
-
-        while current_turn < max_turns:
-            current_turn += 1
-            response = self._call_gemini_safe(
-                contents=contents,
-                system_instruction=self.general_prompt,
-                tools=mcp_tools
-            )
-
-            if isinstance(response, str):
-                return response
-
-            candidate = response.candidates[0] if (hasattr(response, "candidates") and response.candidates) else None
-            if not candidate or not candidate.content:
-                return "No response generated."
-
-            contents.append(candidate.content)
-
-            function_calls = getattr(response, "function_calls", None)
-            if not function_calls and candidate.content.parts:
-                function_calls = [p.function_call for p in candidate.content.parts if p.function_call]
-
-            if not function_calls:
-                return response.text.strip() if (hasattr(response, "text") and response.text) else "No response generated."
-
-            # Execute tool calls and append response parts
-            fn_parts = []
-            for call in function_calls:
-                tool_name = call.name
-                tool_args = dict(call.args) if call.args else {}
-
-                console.print(f"[bold blue][MCP Search][/bold blue] Executing [white]'{tool_name}'[/white] with query: [dim]{tool_args}[/dim]...")
-
-                tool_result = await self.mcp_manager.execute_tool(tool_name, tool_args)
-                fn_parts.append(
-                    types.Part.from_function_response(
-                        name=tool_name,
-                        response={"result": tool_result}
-                    )
-                )
-
-            contents.append(types.Content(role="user", parts=fn_parts))
-
-        return "Reached maximum turn limit for tool calls."
+        # 2. General Chat Route with MCP Tool Integration via GeminiEngine
+        return await self.engine.generate_chat_response_async(
+            user_input=user_input,
+            system_instruction=self.general_prompt
+        )
 
     def handle_user_query(self, user_input: str) -> str:
         """Synchronous wrapper for legacy invocations."""

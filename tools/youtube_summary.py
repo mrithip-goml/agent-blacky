@@ -234,13 +234,28 @@ class YouTubeAgent:
         else:
             return "Please provide a valid YouTube URL."
 
+        active_video_id = self.current_video_id or video_id or "Unknown"
+        video_title = f"Video ({active_video_id})"
+        if self.current_collection and getattr(self.current_collection, "metadata", None):
+            video_title = self.current_collection.metadata.get("title", video_title)
+
+        rag_header = (
+            f"[ACTIVE CONTEXT: YOUTUBE VIDEO RAG]\n"
+            f"Video ID: {active_video_id}\n"
+            f"Title: {video_title}\n\n"
+            f"INSTRUCTIONS: You are answering questions based EXCLUSIVELY on the transcript/chunks of this active YouTube video. "
+            f"Do NOT search the web or make assumptions outside the provided context."
+        )
+        full_system_instruction = f"{rag_header}\n\n{prompt}"
+
         try:
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=contents,
                 config=types.GenerateContentConfig(
-                    system_instruction=prompt,
-                    temperature=0.1
+                    system_instruction=full_system_instruction,
+                    temperature=0.1,
+                    tools=[]
                 )
             )
             return response.text

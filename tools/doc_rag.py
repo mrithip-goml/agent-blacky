@@ -244,13 +244,28 @@ class DocumentAgent:
                 context = self.query_rag(query=user_question, top_k=4)
                 contents = f"User Question: {user_question}\n\nDocument Context:\n{context}"
 
+        active_doc_id = self.current_doc_id or "Unknown"
+        doc_title = f"Document ({active_doc_id})"
+        if self.current_collection and getattr(self.current_collection, "metadata", None):
+            doc_title = self.current_collection.metadata.get("title", doc_title)
+
+        rag_header = (
+            f"[ACTIVE CONTEXT: DOCUMENT RAG]\n"
+            f"Document ID: {active_doc_id}\n"
+            f"Title: {doc_title}\n\n"
+            f"INSTRUCTIONS: You are answering questions based EXCLUSIVELY on the contents/chunks of this active document. "
+            f"Do NOT search the web or make assumptions outside the provided context."
+        )
+        full_system_instruction = f"{rag_header}\n\n{self.qa_prompt}"
+
         try:
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=contents,
                 config=types.GenerateContentConfig(
-                    system_instruction=self.qa_prompt,
-                    temperature=0.1
+                    system_instruction=full_system_instruction,
+                    temperature=0.1,
+                    tools=[]
                 )
             )
             return response.text

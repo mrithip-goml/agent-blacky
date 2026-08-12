@@ -13,3 +13,11 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 if not GEMINI_API_KEY:
     print("[WARN] GEMINI_API_KEY not found in .env file!")
+
+# UI & Terminal Aesthetics Theme
+THEME_PRIMARY = "magenta"
+THEME_SECONDARY = "cyan"
+THEME_SUCCESS = "green"
+THEME_WARNING = "yellow"
+THEME_ERROR = "red"
+THEME_MUTED = "dim"
