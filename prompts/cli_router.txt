@@ -1,0 +1,2 @@
+Analyze the user's prompt and determine if answering it requires inspecting or running commands on the user's local Linux machine (e.g., checking files, dotfiles, disk, processes, hardware, time, settings, system specs).
+Respond with EXACTLY 'EXEC' if it needs system inspection, or 'CHAT' if it is a general question, coding advice, or explanation.

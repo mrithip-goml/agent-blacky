@@ -34,7 +34,7 @@ def thinking_status(spinner_style="magenta"):
             status_ctx.update(f"[{spinner_style}]{phrase}[/{spinner_style}]")
             index += 1
             # Wait for 1 second, but exit immediately if stop_event is set
-            stop_event.wait(2.0)
+            stop_event.wait(3.0)
 
     # Start Rich console status
     with console.status(THINKING_PHRASES[0], spinner="dots") as status:
