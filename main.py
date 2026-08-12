@@ -5,9 +5,11 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.rule import Rule
 from core.thinking import thinking_status
+from tools import stock_agent
 from tools.cli_assistant import CLIAssistant
 from tools.youtube_summary import YouTubeAgent
 from tools.doc_rag import DocumentAgent
+from tools.stock_agent import StockAgent
 
 console = Console()
 
@@ -16,6 +18,7 @@ class BlackyApp:
         self.cli_agent = CLIAssistant()
         self.yt_agent = YouTubeAgent()
         self.doc_agent = DocumentAgent()
+        self.stock_agent = StockAgent()
 
         # Restore active RAG states if present in ChromaDB
         self.active_yt_id = None
@@ -29,6 +32,8 @@ class BlackyApp:
     def print_help(self):
         help_text = """
             ### Blacky AI Command Directory
+            * **`/stock <ticker>`** : Deep fundamental & market analysis for a ticker (e.g. `/stock NVDA` or `/stock AAPL`).
+            * **`/stock compare <t1> <t2> ...`** : Side-by-side comparative analysis with interactive chart widget (e.g. `/stock compare AAPL MSFT GOOGL`).
             * **`/yt <link>`** : Load, index, and summarize a YouTube video.
             * **`/yt list`** : List stored YouTube videos.
             * **`/yt switch <number/id>`** : Switch active YouTube session.
@@ -186,6 +191,47 @@ class BlackyApp:
             else:
                 console.print(f"[bold red]{summary}[/bold red]")
 
+    def handle_stock_route(self, payload: str):
+        if not payload:
+            console.print("[red]Usage:[red] /stock <ticker>  OR  /stock compare <ticker1> <ticker2> ...")
+            return
+
+        tokens = payload.split()
+        
+        # 1. Comparative Analysis Command: /stock compare T1 T2 ...
+        if tokens[0].lower() in ["compare", "comp", "vs"]:
+            tickers = [t.strip(",").upper() for t in tokens[1:]]
+            if len(tickers) < 2:
+                console.print("[bold red]Please specify at least two tickers to compare. Example: /stock compare AAPL MSFT[/bold red]")
+                return
+
+            console.print(f"[bold green][Stock Analyst][/bold green] Comparing stocks: [bold white]{', '.join(tickers)}[/bold white]...")
+            analysis = ""
+            widget = ""
+            with thinking_status():
+                analysis, widget = self.stock_agent.compare_stocks(tickers)
+
+            if analysis.startswith("[ERROR]"):
+                console.print(f"[bold red]{analysis}[/bold red]")
+                return
+
+            console.print(Panel(Markdown(analysis), title=f"[bold green]Stock Comparison ({', '.join(tickers)})[/bold green]", border_style="green"))
+            if widget:
+                console.print(widget)
+            return
+
+        # 2. Single Stock Deep Dive: /stock <ticker>
+        ticker = tokens[0].upper()
+        console.print(f"[bold green][Stock Analyst][/bold green] Fetching live financial metrics for [bold white]{ticker}[/bold white]...")
+        with thinking_status():
+            analysis, _ = self.stock_agent.analyze_single_stock(ticker)
+
+        if analysis.startswith("[ERROR]"):
+            console.print(f"[bold red]{analysis}[/bold red]")
+            return
+
+        console.print(Panel(Markdown(analysis), title=f"[bold green]Equity Analysis ({ticker})[/bold green]", border_style="green"))
+
     def run(self):
         self.display_banner()
         console.print("[dim]Type '/help' for commands, or 'exit' / 'q' to quit.[/dim]\n")
@@ -235,6 +281,11 @@ class BlackyApp:
                 if user_input.startswith("/yt"):
                     payload = user_input[3:].strip()
                     self.handle_youtube_route(payload)
+                    continue
+
+                if user_input.startswith("/stock"):
+                    payload = user_input[6:].strip()
+                    self.handle_stock_route(payload)
                     continue
 
                 # 5. Automatic Context Routing
