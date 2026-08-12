@@ -21,15 +21,6 @@ console = Console()
 
 class BlackyApp:
     def __init__(self):
-        self.cli_agent = CLIAssistant()
-        self.yt_agent = YouTubeAgent()
-        self.doc_agent = DocumentAgent()
-        self.stock_agent = StockAgent()
-
-        # Restore active RAG states if present in ChromaDB
-        self.active_yt_id = None
-        self.active_doc_id = None
-
         venv_bin = Path(sys.executable).parent
         duckduckgo_executable = str(venv_bin / "duckduckgo-mcp-server")
 
@@ -38,6 +29,15 @@ class BlackyApp:
             args=[]
         )
         self.mcp_connected = False
+
+        self.cli_agent = CLIAssistant(mcp_manager=self.mcp_manager)
+        self.yt_agent = YouTubeAgent()
+        self.doc_agent = DocumentAgent()
+        self.stock_agent = StockAgent()
+
+        # Restore active RAG states if present in ChromaDB
+        self.active_yt_id = None
+        self.active_doc_id = None
 
     async def initialize_mcp(self):
         """Connects to the DuckDuckGo MCP Server process on startup."""
@@ -63,7 +63,7 @@ class BlackyApp:
             "[cyan]/stock[/cyan] Market Analyst  •  "
             "[yellow]/yt[/yellow] YouTube Agent  •  "
             "[cyan]/doc[/cyan] Document RAG  •  "
-            "[blue]/search[/blue] Realtime MCP Search  •  "
+            "[blue]MCP[/blue] Automatic Search  •  "
             "[green]/help[/green] Commands"
         )
         footer = f"[dim]model:[/dim] [bold white]{GEMINI_MODEL}[/bold white]"
@@ -86,7 +86,8 @@ class BlackyApp:
         help_table.add_column("Command", style="bold green", no_wrap=True)
         help_table.add_column("Description", style="white")
 
-        help_table.add_row("[bold yellow]/search <query>[/bold yellow]", "Perform real-time web search via MCP DuckDuckGo tool")
+        help_table.add_row("[bold yellow]General Chat[/bold yellow]", "Ask any natural-language question. Real-time topics automatically trigger MCP DuckDuckGo search.")
+        help_table.add_row("[bold yellow]/search <query>[/bold yellow]", "Perform explicit web search via MCP DuckDuckGo tool")
         help_table.add_row("[bold yellow]/stock <ticker>[/bold yellow]", "Deep fundamental & market analysis for a ticker (e.g. `/stock NVDA` or `/stock AAPL`)")
         help_table.add_row("[bold yellow]/stock compare <t1> <t2> ...[/bold yellow]", "Side-by-side comparative analysis with chart (e.g. `/stock compare AAPL MSFT GOOGL`)")
         help_table.add_row("[bold yellow]/yt <link>[/bold yellow]", "Load, index, and summarize a YouTube video")
@@ -101,7 +102,7 @@ class BlackyApp:
 
         console.print(help_table)
         console.print()
-        console.print("[dim]Tip: Type any natural-language question for the general AI assistant, or use the commands above for specialized tools.[/dim]")
+        console.print("[dim]Tip: Simply ask any question! Real-time queries automatically invoke web search via MCP.[/dim]")
         console.print()
 
     async def handle_search_route(self, query: str):
@@ -366,7 +367,13 @@ class BlackyApp:
                     self.handle_stock_route(payload)
                     continue
 
-                # 5. Automatic Context Routing
+                # 5. Explicit MCP Search Command
+                if user_input.startswith("/search"):
+                    payload = user_input[7:].strip()
+                    await self.handle_search_route(payload)
+                    continue
+
+                # 6. Automatic Context Routing
                 if self.active_doc_id:
                     console.print(f"[bold cyan][Document RAG][/bold cyan] Querying context...")
                     with thinking_status():
@@ -387,9 +394,9 @@ class BlackyApp:
                     console.print(Panel(Markdown(answer), title=f"[bold magenta]YouTube RAG Response[/bold magenta]", border_style="magenta"))
                     continue
 
-                # 6. Standard General Chat
+                # 7. Standard General Chat
                 with thinking_status():
-                    response = self.cli_agent.handle_user_query(user_input)
+                    response = await self.cli_agent.handle_user_query_async(user_input)
 
                 console.print(Rule(style="dim"))
                 console.print(Markdown(response))

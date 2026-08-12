@@ -25,17 +25,34 @@ class MCPClientManager:
         )
         self.session: ClientSession | None = None
         self._exit_stack = None
+        self._gemini_tools: List[types.FunctionDeclaration] | None = None
+
+    @property
+    def is_connected(self) -> bool:
+        return self.session is not None
 
     async def connect(self):
-        """Establishes stdio connection to the MCP server process."""
-        self._exit_stack = stdio_client(self.server_params)
-        read, write = await self._exit_stack.__aenter__()
-        self.session = ClientSession(read, write)
-        await self.session.__aenter__()
-        await self.session.initialize()
+        """Establishes stdio connection to the MCP server process silently."""
+        # Temporarily redirect stderr to silence fastmcp / server startup logs
+        stderr_fd = sys.stderr.fileno()
+        saved_stderr = os.dup(stderr_fd)
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(devnull, stderr_fd)
+            
+            self._exit_stack = stdio_client(self.server_params)
+            read, write = await self._exit_stack.__aenter__()
+            self.session = ClientSession(read, write)
+            await self.session.__aenter__()
+            await self.session.initialize()
+        finally:
+            os.dup2(saved_stderr, stderr_fd)
+            os.close(saved_stderr)
+            os.close(devnull)
 
     async def close(self):
         """Cleanly closes session and shuts down the MCP server process."""
+        self._gemini_tools = None
         if self.session:
             await self.session.__aexit__(None, None, None)
             self.session = None
@@ -47,6 +64,9 @@ class MCPClientManager:
         """Retrieves tools from the MCP server and converts them into Gemini FunctionDeclarations."""
         if not self.session:
             raise RuntimeError("MCP Session is not initialized. Call connect() first.")
+
+        if self._gemini_tools is not None:
+            return self._gemini_tools
 
         mcp_tools = await self.session.list_tools()
         gemini_functions = []
@@ -60,6 +80,7 @@ class MCPClientManager:
             )
             gemini_functions.append(fn_decl)
 
+        self._gemini_tools = gemini_functions
         return gemini_functions
 
     async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
@@ -79,33 +100,3 @@ class MCPClientManager:
             return "\n".join(outputs) if outputs else "Tool executed successfully with no text output."
         except Exception as e:
             return f"[ERROR] Failed to execute MCP tool '{tool_name}': {str(e)}"
-
-
-async def _test_runner():
-    print("[Blacky] Testing DuckDuckGo MCP Server...")
-    
-    # Locate the executable in the active pyenv environment
-    venv_bin = Path(sys.executable).parent
-    duckduckgo_executable = str(venv_bin / "duckduckgo-mcp-server")
-
-    manager = MCPClientManager(
-        command=duckduckgo_executable,
-        args=[]
-    )
-    
-    try:
-        await manager.connect()
-        tools = await manager.get_gemini_tools()
-        print(f"[Success] Connected! Loaded {len(tools)} tools:")
-        for t in tools:
-            print(f" - {t.name}: {t.description}")
-            
-        print("\nTesting Search Query...")
-        res = await manager.execute_tool("search", {"query": "Niri Wayland compositor", "max_results": 2})
-        print(res[:300] + "...")
-    finally:
-        await manager.close()
-
-
-if __name__ == "__main__":
-    asyncio.run(_test_runner())
