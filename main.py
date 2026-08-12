@@ -1,4 +1,6 @@
+from pathlib import Path
 import config.settings
+import asyncio
 import sys
 from rich.console import Console
 from rich.markdown import Markdown
@@ -13,6 +15,7 @@ from tools.cli_assistant import CLIAssistant
 from tools.youtube_summary import YouTubeAgent
 from tools.doc_rag import DocumentAgent
 from tools.stock_agent import StockAgent
+from tools.mcp_client import MCPClientManager
 
 console = Console()
 
@@ -27,6 +30,32 @@ class BlackyApp:
         self.active_yt_id = None
         self.active_doc_id = None
 
+        venv_bin = Path(sys.executable).parent
+        duckduckgo_executable = str(venv_bin / "duckduckgo-mcp-server")
+
+        self.mcp_manager = MCPClientManager(
+            command=duckduckgo_executable,
+            args=[]
+        )
+        self.mcp_connected = False
+
+    async def initialize_mcp(self):
+        """Connects to the DuckDuckGo MCP Server process on startup."""
+        try:
+            console.print("[dim]Booting up MCP DuckDuckGo Search Server...[/dim]")
+            await self.mcp_manager.connect()
+            self.mcp_connected = True
+            console.print("[bold green]✓ MCP Search Agent Ready[/bold green]\n")
+        except Exception as e:
+            console.print(f"[bold yellow]⚠ MCP Startup Warning:[/bold yellow] {e}")
+            self.mcp_connected = False
+
+    async def close_mcp(self):
+        """Cleanly terminates the MCP subprocess on exit."""
+        if self.mcp_connected:
+            await self.mcp_manager.close()
+            self.mcp_connected = False
+
     def display_banner(self):
         title = "[bold magenta]✦ BLACKY AI ✦[/bold magenta]"
         subtitle = "[dim]Niri Terminal Companion[/dim]"
@@ -34,6 +63,7 @@ class BlackyApp:
             "[cyan]/stock[/cyan] Market Analyst  •  "
             "[yellow]/yt[/yellow] YouTube Agent  •  "
             "[cyan]/doc[/cyan] Document RAG  •  "
+            "[blue]/search[/blue] Realtime MCP Search  •  "
             "[green]/help[/green] Commands"
         )
         footer = f"[dim]model:[/dim] [bold white]{GEMINI_MODEL}[/bold white]"
@@ -56,6 +86,7 @@ class BlackyApp:
         help_table.add_column("Command", style="bold green", no_wrap=True)
         help_table.add_column("Description", style="white")
 
+        help_table.add_row("[bold yellow]/search <query>[/bold yellow]", "Perform real-time web search via MCP DuckDuckGo tool")
         help_table.add_row("[bold yellow]/stock <ticker>[/bold yellow]", "Deep fundamental & market analysis for a ticker (e.g. `/stock NVDA` or `/stock AAPL`)")
         help_table.add_row("[bold yellow]/stock compare <t1> <t2> ...[/bold yellow]", "Side-by-side comparative analysis with chart (e.g. `/stock compare AAPL MSFT GOOGL`)")
         help_table.add_row("[bold yellow]/yt <link>[/bold yellow]", "Load, index, and summarize a YouTube video")
@@ -72,6 +103,24 @@ class BlackyApp:
         console.print()
         console.print("[dim]Tip: Type any natural-language question for the general AI assistant, or use the commands above for specialized tools.[/dim]")
         console.print()
+
+    async def handle_search_route(self, query: str):
+        if not query:
+            console.print("[red]Usage:[red] /search <query>")
+            return
+
+        if not self.mcp_connected:
+            console.print("[bold red]MCP Search Server is not active.[/bold red]")
+            return
+
+        console.print(f"[bold blue][MCP Search][/bold blue] Executing DuckDuckGo web search for: [white]'{query}'[/white]...")
+        with thinking_status():
+            try:
+                results = await self.mcp_manager.execute_tool("search", {"query": query, "max_results": 5})
+            except Exception as e:
+                results = f"[ERROR] Search failed: {str(e)}"
+
+        console.print(Panel(Markdown(results), title=f"[bold blue]Search Results ({query})[/bold blue]", border_style="blue"))
 
     def handle_doc_route(self, payload: str):
         if not payload:
@@ -260,7 +309,8 @@ class BlackyApp:
 
         console.print(Panel(Markdown(analysis), title=f"[bold green]Equity Analysis ({ticker})[/bold green]", border_style="green"))
 
-    def run(self):
+    async def run(self):
+        await self.initialize_mcp()
         self.display_banner()
         console.print("[dim]Type '/help' for commands, or 'exit' / 'q' to quit.[/dim]\n")
 
@@ -350,13 +400,15 @@ class BlackyApp:
                 console.print("\n[yellow]Exiting Blacky...[/yellow]")
                 sys.exit(0)
 
-def main():
+        await self.close_mcp()
+
+async def main():
     try:
         app = BlackyApp()
-        app.run()
+        await app.run()
     except Exception as e:
         console.print(f"[bold red]Initialization Error:[/bold red] {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
