@@ -4,7 +4,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError, ClientError
-from config.settings import GEMINI_API_KEY
+from config.settings import GEMINI_API_KEY, GEMINI_MODEL
 
 def load_prompt(filename: str) -> str:
     """Helper to load system prompts from the prompts/ directory."""
@@ -20,7 +20,7 @@ class CLIAssistant:
             raise ValueError("GEMINI_API_KEY is missing! Check your .env file.")
         
         self.client = genai.Client(api_key=self.api_key)
-        self.model = "gemini-3.1-flash-lite"
+        self.model = GEMINI_MODEL
 
         # Load external prompt files
         self.router_prompt = load_prompt("cli_router.txt")

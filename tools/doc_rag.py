@@ -6,7 +6,7 @@ from chromadb.utils import embedding_functions
 from google import genai
 from google.genai import types
 from google.genai.errors import ClientError
-from config.settings import GEMINI_API_KEY
+from config.settings import GEMINI_API_KEY, GEMINI_MODEL
 
 # Document Parsers
 import pypdf
@@ -32,7 +32,7 @@ class DocumentAgent:
             raise ValueError("GEMINI_API_KEY is missing! Check your .env file.")
 
         self.client = genai.Client(api_key=self.api_key)
-        self.model = "gemini-3.1-flash-lite"
+        self.model = GEMINI_MODEL
 
         self.qa_prompt = load_prompt("doc_qa.txt")
 

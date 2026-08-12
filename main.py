@@ -4,6 +4,9 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.rule import Rule
+from rich.table import Table
+from rich import box
+from config.settings import GEMINI_MODEL
 from core.thinking import thinking_status
 from tools import stock_agent
 from tools.cli_assistant import CLIAssistant
@@ -25,25 +28,50 @@ class BlackyApp:
         self.active_doc_id = None
 
     def display_banner(self):
-        banner = "[bold magenta]BLACKY AI[/bold magenta] - [dim]Niri Terminal Companion[/dim]\n" \
-                 "[cyan]/yt[/cyan] YouTube Agent  |  [cyan]/doc[/cyan] Document RAG  |  [cyan]/help[/cyan] Commands"
-        console.print(Panel(banner, border_style="magenta", expand=False))
+        title = "[bold magenta]✦ BLACKY AI ✦[/bold magenta]"
+        subtitle = "[dim]Niri Terminal Companion[/dim]"
+        badges = (
+            "[cyan]/stock[/cyan] Market Analyst  •  "
+            "[yellow]/yt[/yellow] YouTube Agent  •  "
+            "[cyan]/doc[/cyan] Document RAG  •  "
+            "[green]/help[/green] Commands"
+        )
+        footer = f"[dim]model:[/dim] [bold white]{GEMINI_MODEL}[/bold white]"
+        banner = Table.grid(padding=(0, 1))
+        banner.add_column(justify="center")
+        banner.add_column(justify="left")
+        banner.add_row(title, footer)
+        banner.add_row(subtitle, badges)
+        console.print(Panel(banner, border_style="magenta", box=box.ROUNDED, expand=False, padding=(1, 2)))
 
     def print_help(self):
-        help_text = """
-            ### Blacky AI Command Directory
-            * **`/stock <ticker>`** : Deep fundamental & market analysis for a ticker (e.g. `/stock NVDA` or `/stock AAPL`).
-            * **`/stock compare <t1> <t2> ...`** : Side-by-side comparative analysis with interactive chart widget (e.g. `/stock compare AAPL MSFT GOOGL`).
-            * **`/yt <link>`** : Load, index, and summarize a YouTube video.
-            * **`/yt list`** : List stored YouTube videos.
-            * **`/yt switch <number/id>`** : Switch active YouTube session.
-            * **`/doc <path>`** : Load & index PDF, DOCX, PPTX, EPUB, MD, TXT, HTML.
-            * **`/doc list`** : List all stored local documents in vector store.
-            * **`/doc switch <number/id>`** : Switch active document session.
-            * **`/exit` or `q`** : Exit active mode back to General Chat.
-            * **`/clear`** : Clear terminal screen.
-        """
-        console.print(Panel(Markdown(help_text.strip()), title="[bold cyan]Help & Syntax[/bold cyan]", border_style="cyan"))
+        help_table = Table(
+            title="[bold cyan]Blacky AI Command Directory[/bold cyan]",
+            border_style="cyan",
+            box=box.ROUNDED,
+            header_style="bold white on dark_cyan",
+            expand=False,
+            padding=(0, 1)
+        )
+        help_table.add_column("Command", style="bold green", no_wrap=True)
+        help_table.add_column("Description", style="white")
+
+        help_table.add_row("[bold yellow]/stock <ticker>[/bold yellow]", "Deep fundamental & market analysis for a ticker (e.g. `/stock NVDA` or `/stock AAPL`)")
+        help_table.add_row("[bold yellow]/stock compare <t1> <t2> ...[/bold yellow]", "Side-by-side comparative analysis with chart (e.g. `/stock compare AAPL MSFT GOOGL`)")
+        help_table.add_row("[bold yellow]/yt <link>[/bold yellow]", "Load, index, and summarize a YouTube video")
+        help_table.add_row("[bold yellow]/yt list[/bold yellow]", "List all stored YouTube videos")
+        help_table.add_row("[bold yellow]/yt switch <number/id>[/bold yellow]", "Switch active YouTube session")
+        help_table.add_row("[bold yellow]/doc <path>[/bold yellow]", "Load & index PDF, DOCX, PPTX, EPUB, MD, TXT, HTML")
+        help_table.add_row("[bold yellow]/doc list[/bold yellow]", "List all stored documents in vector store")
+        help_table.add_row("[bold yellow]/doc switch <number/id>[/bold yellow]", "Switch active document session")
+        help_table.add_row("[bold yellow]/exit[/bold yellow]  or  [bold yellow]q[/bold yellow]", "Exit active mode back to General Chat")
+        help_table.add_row("[bold yellow]/clear[/bold yellow]", "Clear terminal screen")
+        help_table.add_row("[bold yellow]/help[/bold yellow]", "Show this command directory")
+
+        console.print(help_table)
+        console.print()
+        console.print("[dim]Tip: Type any natural-language question for the general AI assistant, or use the commands above for specialized tools.[/dim]")
+        console.print()
 
     def handle_doc_route(self, payload: str):
         if not payload:
@@ -240,11 +268,11 @@ class BlackyApp:
             try:
                 # Prompt Indicator
                 if self.active_doc_id:
-                    prompt_label = f"[bold cyan]Blacky [DOC:{self.active_doc_id}] > [/bold cyan]"
+                    prompt_label = f"[bold cyan]📄 Blacky [DOC:{self.active_doc_id}] ❯ [/bold cyan]"
                 elif self.active_yt_id:
-                    prompt_label = f"[bold magenta]Blacky [YT:{self.active_yt_id}] > [/bold magenta]"
+                    prompt_label = f"[bold magenta]▶ Blacky [YT:{self.active_yt_id}] ❯ [/bold magenta]"
                 else:
-                    prompt_label = "[bold green]Blacky > [/bold green]"
+                    prompt_label = "[bold green]✦ Blacky ❯ [/bold green]"
 
                 user_input = console.input(prompt_label).strip()
 
@@ -313,9 +341,9 @@ class BlackyApp:
                 with thinking_status():
                     response = self.cli_agent.handle_user_query(user_input)
 
-                console.print(Rule(style="magenta"))
+                console.print(Rule(style="dim"))
                 console.print(Markdown(response))
-                console.print(Rule(style="magenta"))
+                console.print(Rule(style="dim"))
                 console.print()
 
             except (KeyboardInterrupt, EOFError):

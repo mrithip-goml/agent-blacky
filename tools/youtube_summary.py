@@ -7,7 +7,7 @@ from chromadb.utils import embedding_functions
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError, ClientError
-from config.settings import GEMINI_API_KEY
+from config.settings import GEMINI_API_KEY, GEMINI_MODEL
 
 def load_prompt(filename: str) -> str:
     prompt_path = Path(__file__).parent.parent / "prompts" / filename
@@ -22,7 +22,7 @@ class YouTubeAgent:
             raise ValueError("GEMINI_API_KEY is missing! Check your .env file.")
 
         self.client = genai.Client(api_key=self.api_key)
-        self.model = "gemini-2.5-flash"
+        self.model = GEMINI_MODEL
         
         self.summary_prompt = load_prompt("yt_summary.txt")
         self.qa_prompt = load_prompt("yt_qa.txt")
