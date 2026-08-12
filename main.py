@@ -8,7 +8,11 @@ from tools.cli_assistant import CLIAssistant
 
 console = Console()
 
-SYSTEM_KEYWORDS = ["disk", "usage", "storage", "ram", "memory", "file", "folder", "process", "cpu", "directory", "run", "cmd", "find"]
+SYSTEM_KEYWORDS = [
+    "disk", "usage", "storage", "ram", "memory", "file", "folder", 
+    "process", "cpu", "directory", "run", "cmd", "find", "time", 
+    "date", "config", "niri", "settings", "path", "uptime", "whoami"
+]
 
 def display_banner():
     banner = "[bold magenta]BLACKY AI[/bold magenta] - [dim]Niri Terminal Companion[/dim]"
@@ -33,7 +37,6 @@ def main():
             if user_input.lower() in ["exit", "q"]:
                 break
 
-            # The background thread will now cycle phrases every 1 second while waiting
             with thinking_status():
                 is_system_query = any(kw in user_input.lower() for kw in SYSTEM_KEYWORDS) or user_input.lower().startswith("run:") or user_input.lower().startswith("cmd:")
 

@@ -30,6 +30,7 @@ class CLIAssistant:
         system_instruction = (
             "You are Blacky, a Linux CLI assistant running on Ubuntu with Niri Wayland.\n"
             "Translate the user request into a single valid POSIX/bash command.\n"
+            "If the user asks about configuration files, look in ~/.config/.\n"
             "STRICT RULES:\n"
             "1. NO sudo or elevated permissions.\n"
             "2. Operate strictly within user home or current directory permissions.\n"
@@ -44,8 +45,7 @@ class CLIAssistant:
                 temperature=0.1
             )
         )
-        cmd = response.text.strip().replace("```bash", "").replace("```", "").strip()
-        return cmd
+        return response.text.strip().replace("```bash", "").replace("```", "").strip()
 
     def execute_command(self, command: str) -> str:
         is_safe, reason = self.is_safe_command(command)
@@ -78,36 +78,27 @@ class CLIAssistant:
 
     def process_smart_query(self, user_input: str) -> str:
         """Determines if query needs system execution, runs it, and formats a concise response."""
-        system_instruction = (
-            "You are Blacky, an AI companion running locally on an Ubuntu Linux system.\n"
-            "The user asked a query about their local machine or system state.\n"
-            "First, generate the appropriate user-level non-sudo bash command to retrieve this info."
-        )
-        
-        # Step A: Get command
         cmd = self.generate_command(user_input)
         is_safe, reason = self.is_safe_command(cmd)
         
         if not is_safe:
             return f"I cannot execute that command due to security restrictions ({reason})."
 
-        # Step B: Run command locally
         output = self.execute_command(cmd)
 
-        # Step C: Summarize result concisely
         summary_prompt = (
-            f"User asked: '{user_input}'\n"
-            f"Command executed: `{cmd}`\n"
-            f"Raw command output:\n{output}\n\n"
-            "Provide a direct, concise response in 1-2 clean sentences summarizing the key information. "
-            "Include the command executed for transparency."
+            f"User Query: '{user_input}'\n"
+            f"Executed Command: `{cmd}`\n"
+            f"Command Output:\n{output}\n\n"
+            "Summarize the command output clearly and directly to answer the user's question. "
+            "Mention the executed command at the end in parentheses."
         )
 
         response = self.client.models.generate_content(
             model=self.model,
             contents=summary_prompt,
             config=types.GenerateContentConfig(
-                system_instruction="You are Blacky, a concise Linux terminal assistant. Be direct, clear, and brief."
+                system_instruction="You are Blacky, a direct Linux terminal assistant. Synthesize raw command output into clean prose."
             )
         )
         return response.text
