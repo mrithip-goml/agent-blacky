@@ -8,12 +8,6 @@ from tools.cli_assistant import CLIAssistant
 
 console = Console()
 
-SYSTEM_KEYWORDS = [
-    "disk", "usage", "storage", "ram", "memory", "file", "folder", 
-    "process", "cpu", "directory", "run", "cmd", "find", "time", 
-    "date", "config", "niri", "settings", "path", "uptime", "whoami"
-]
-
 def display_banner():
     banner = "[bold magenta]BLACKY AI[/bold magenta] - [dim]Niri Terminal Companion[/dim]"
     console.print(Panel(banner, border_style="magenta", expand=False))
@@ -38,17 +32,7 @@ def main():
                 break
 
             with thinking_status():
-                is_system_query = any(kw in user_input.lower() for kw in SYSTEM_KEYWORDS) or user_input.lower().startswith("run:") or user_input.lower().startswith("cmd:")
-
-                if is_system_query:
-                    clean_query = user_input.replace("run:", "").replace("cmd:", "").strip()
-                    response = cli_agent.process_smart_query(clean_query)
-                else:
-                    response = cli_agent.client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=user_input,
-                        config={"system_instruction": "You are Blacky, a concise Linux terminal assistant running on Ubuntu Niri. Keep responses brief, direct, and well-structured."}
-                    ).text
+                response = cli_agent.handle_user_query(user_input)
 
             console.print("\n[bold magenta]Blacky:[/bold magenta]")
             console.print(Markdown(response))

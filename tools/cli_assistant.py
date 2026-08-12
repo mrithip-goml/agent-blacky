@@ -26,11 +26,26 @@ class CLIAssistant:
                 return False, f"Forbidden command pattern detected: {pattern}"
         return True, "Safe"
 
+    def requires_system_execution(self, user_prompt: str) -> bool:
+        """Determines if a prompt requires inspecting the local system/files."""
+        router_prompt = (
+            "Analyze the user's prompt and determine if answering it requires inspecting or running commands "
+            "on the user's local Linux machine (e.g., checking files, dotfiles, disk, processes, hardware, time, settings, system specs).\n"
+            "Respond with EXACTLY 'EXEC' if it needs system inspection, or 'CHAT' if it is a general question, coding advice, or explanation.\n\n"
+            f"User Prompt: {user_prompt}"
+        )
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=router_prompt,
+            config=types.GenerateContentConfig(temperature=0.0)
+        )
+        return "EXEC" in response.text.strip().upper()
+
     def generate_command(self, user_prompt: str) -> str:
         system_instruction = (
             "You are Blacky, a Linux CLI assistant running on Ubuntu with Niri Wayland.\n"
-            "Translate the user request into a single valid POSIX/bash command.\n"
-            "If the user asks about configuration files, look in ~/.config/.\n"
+            "Translate the user request into a single valid POSIX/bash command to inspect or get data from the system.\n"
+            "If the user asks about system configuration or customizations, check ~/.config/ or shell dotfiles (~/.bashrc, etc.).\n"
             "STRICT RULES:\n"
             "1. NO sudo or elevated permissions.\n"
             "2. Operate strictly within user home or current directory permissions.\n"
@@ -76,29 +91,39 @@ class CLIAssistant:
         except Exception as e:
             return f"[ERROR] Execution failed: {str(e)}"
 
-    def process_smart_query(self, user_input: str) -> str:
-        """Determines if query needs system execution, runs it, and formats a concise response."""
-        cmd = self.generate_command(user_input)
-        is_safe, reason = self.is_safe_command(cmd)
-        
-        if not is_safe:
-            return f"I cannot execute that command due to security restrictions ({reason})."
+    def handle_user_query(self, user_input: str) -> str:
+        """Seamlessly routes to either direct chat or shell execution + summary."""
+        if self.requires_system_execution(user_input):
+            cmd = self.generate_command(user_input)
+            is_safe, reason = self.is_safe_command(cmd)
+            
+            if not is_safe:
+                return f"I cannot execute that command due to security restrictions ({reason})."
 
-        output = self.execute_command(cmd)
+            output = self.execute_command(cmd)
 
-        summary_prompt = (
-            f"User Query: '{user_input}'\n"
-            f"Executed Command: `{cmd}`\n"
-            f"Command Output:\n{output}\n\n"
-            "Summarize the command output clearly and directly to answer the user's question. "
-            "Mention the executed command at the end in parentheses."
-        )
-
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=summary_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction="You are Blacky, a direct Linux terminal assistant. Synthesize raw command output into clean prose."
+            summary_prompt = (
+                f"User Query: '{user_input}'\n"
+                f"Executed Command: `{cmd}`\n"
+                f"Command Output:\n{output}\n\n"
+                "Summarize the command output clearly and directly to answer the user's question. "
+                "Include the executed command at the end in parentheses."
             )
-        )
-        return response.text
+
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=summary_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction="You are Blacky, a direct Linux terminal assistant. Synthesize raw command output into clean prose."
+                )
+            )
+            return response.text
+        else:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=user_input,
+                config=types.GenerateContentConfig(
+                    system_instruction="You are Blacky, a concise Linux terminal assistant running on Ubuntu Niri. Keep responses brief, direct, and well-structured."
+                )
+            )
+            return response.text
