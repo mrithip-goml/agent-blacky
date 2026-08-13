@@ -34,6 +34,18 @@ Blacky AI is a modular, high-performance terminal companion engineered for Linux
 - **Security Blacklisting**: Enforces strict pattern checks blocking destructive commands (`sudo`, `rm -rf /`, `chown`, disk format operations).
 - **Output Summarization**: Executes safe commands in a subshell and synthesizes execution results cleanly for the user.
 
+### 6. Persistent Conversation History
+- **Automatic Memory**: Every user/assistant exchange is stored in memory and fed back to Gemini on subsequent turns, giving the AI conversational context within a session.
+- **Disk Persistence**: History is saved to `history/chat_history.json` after every turn and automatically reloaded on startup, so conversations survive restarts.
+- **Review & Reset**: View the full conversation log with `/history` (or `/hist`) and start fresh with `/new` (or `/reset`).
+
+### 7. Optional Voice Interaction (F.R.I.D.A.Y. Mode)
+- **Text-First, Voice-Optional**: Text I/O remains the primary mode; voice is strictly opt-in and never interferes when disabled.
+- **Speech-to-Text (STT)**: Uses `faster-whisper` (base model, CPU, int8) with energy-threshold silence detection. Lazy-loaded only when voice input is first activated.
+- **Text-to-Speech (TTS)**: Uses `edge-tts` (Irish `en-IE-EmilyNeural` voice, fallback `en-GB-SoniaNeural`) with offline `pyttsx3` fallback on network errors. Long responses are chunked to reduce latency.
+- **Dual Toggles**: `/voice` / `/text` control microphone input; `/talk` / `/mute` control audio output. CLI flags `--voice` and `--speak` enable them at startup.
+- **Graceful Exits**: Saying "exit voice", "stop voice", or "text mode" (or pressing Ctrl+C) reverts to standard text input without crashing.
+
 ---
 
 ## Architecture Overview
@@ -48,9 +60,12 @@ blacky_ai/
 │   ├── client.py            Stdio MCP client connection, session management, and schema mapping
 │   └── tools.py             MCP tool execution handlers and response formatting
 ├── core/
-│   ├── llm.py               GeminiEngine managing Gemini API calls and Function Calling roundtrips
+│   ├── llm.py               GeminiEngine managing Gemini API calls, Function Calling roundtrips, and persistent chat history
 │   ├── commands.py          CommandHandler managing slash routes and active RAG sessions
 │   └── thinking.py          Status spinner and phrase rotation context manager
+├── voice/
+│   ├── stt.py               WhisperSTT speech-to-text engine (lazy-loaded, silence detection)
+│   └── tts.py               edge-tts / pyttsx3 text-to-speech with markdown stripping and chunking
 ├── tools/
 │   ├── cli_assistant.py     System execution router and general assistant wrapper
 │   ├── doc_rag.py           Document RAG ingestion and ChromaDB vector agent
@@ -66,6 +81,7 @@ blacky_ai/
 │   ├── cli_generator.txt    Safe bash command generator prompt
 │   └── cli_summarizer.txt   Bash execution output summarizer prompt
 ├── vectorstore/             Persistent ChromaDB storage for document and YouTube vector indices
+├── history/                 Persistent JSON conversation history (chat_history.json)
 └── main.py                  Slim CLI entry point handling argument loop and async lifecycle
 ```
 
@@ -134,6 +150,10 @@ Type any natural-language question directly into the prompt:
 | **`/doc list`** | None | Lists all documents stored in the local vector database. |
 | **`/doc switch`** | `<number_or_id>` | Switches the active RAG session to a previously indexed document. |
 | **`/search`** | `<query>` | Manually triggers an explicit DuckDuckGo MCP web search query. |
+| **`/history`** or **`/hist`** | None | Displays the persistent conversation history log. |
+| **`/new`** or **`/reset`** | None | Clears the conversation history (memory + disk) and starts fresh. |
+| **`/voice`** or **`/text`** | None | Toggles Speech-to-Text (microphone) input mode. |
+| **`/talk`** or **`/mute`** | None | Toggles Text-to-Speech (audio output) mode. |
 | **`/clear`** | None | Clears the terminal screen and re-displays the banner. |
 | **`/help`** | None | Displays the command directory table. |
 | **`/exit`** or **`q`** | None | Exits an active RAG session back to general chat mode, or exits the application if in general chat mode. |
@@ -150,6 +170,27 @@ When a YouTube (`[YT:<id>]`) or Document (`[DOC:<id>]`) session is active:
 
 ### Security Framework
 Commands generated for local system execution are parsed against a forbidden pattern regex list (`sudo`, `su`, `chown`, `rm -rf /`, `rm -rf ~`, raw disk writes). Unsafe commands are blocked prior to subshell invocation.
+
+### Conversation History Storage
+- **Location**: `history/chat_history.json` in the project root.
+- **Format**: JSON array of `{"user": "...", "assistant": "..."}` pairs.
+- **Persistence**: Saved automatically after every completed exchange and loaded on startup.
+- **Privacy**: The `history/` directory is excluded from version control via `.gitignore`. Use `/new` to wipe it at any time.
+
+### Voice Mode Quick Start
+```bash
+# Text-only (default)
+python main.py
+
+# Enable microphone input (STT) on startup
+python main.py --voice
+
+# Enable audio output (TTS) on startup
+python main.py --speak
+
+# Enable both
+python main.py --voice --speak
+```
 
 ---
 

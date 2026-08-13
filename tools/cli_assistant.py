@@ -113,6 +113,14 @@ class CLIAssistant:
             system_instruction=self.general_prompt
         )
 
+    def get_history(self) -> list[dict]:
+        """Returns the conversation history log (user/assistant pairs)."""
+        return list(self.engine.chat_log)
+
+    def clear_history(self):
+        """Clears the conversation history and chat log."""
+        self.engine.clear_history()
+
     def handle_user_query(self, user_input: str) -> str:
         """Synchronous wrapper for legacy invocations."""
         return asyncio.run(self.handle_user_query_async(user_input))

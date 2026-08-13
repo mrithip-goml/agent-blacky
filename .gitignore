@@ -39,6 +39,9 @@ htmlcov/
 *.log
 logs/
 
+# Conversation History
+history/
+
 # Jupyter Notebook
 .ipynb_checkpoints/
 

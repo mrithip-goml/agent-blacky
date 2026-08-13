@@ -109,6 +109,23 @@ class BlackyApp:
                     print_help()
                     continue
 
+                if user_input.lower() in ["/history", "/hist"]:
+                    history = self.cli_agent.get_history()
+                    if not history:
+                        console.print("[dim]No conversation history yet.[/dim]")
+                        continue
+                    console.print("[bold cyan]=== Conversation History ===[/bold cyan]")
+                    for i, entry in enumerate(history, 1):
+                        console.print(f"[bold green]{i}. You:[/bold green] {entry['user']}")
+                        console.print(f"[bold magenta]   Blacky:[/bold magenta] {entry['assistant'][:200]}")
+                    console.print()
+                    continue
+
+                if user_input.lower() in ["/new", "/clear history", "/reset"]:
+                    self.cli_agent.clear_history()
+                    console.print("[bold green]✦ Conversation history cleared.[/bold green]")
+                    continue
+
                 if user_input.startswith("/doc"):
                     self.cmd_handler.handle_doc_route(user_input[4:].strip())
                     continue

@@ -1,10 +1,16 @@
 import asyncio
+import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError, ClientError
 from ui.console import console
 from config.settings import GEMINI_API_KEY, GEMINI_MODEL
+
+# File-based conversation history storage
+HISTORY_DIR = Path(__file__).resolve().parent.parent / "history"
+HISTORY_FILE = HISTORY_DIR / "chat_history.json"
 
 class GeminiEngine:
     """Core LLM engine managing Gemini API interactions and MCP Function Calling loops."""
@@ -17,13 +23,46 @@ class GeminiEngine:
         self.client = genai.Client(api_key=self.api_key)
         self.model = model or GEMINI_MODEL
         self.mcp_manager = mcp_manager
-    #     self.history: List[types.Content] = []
-    #     self.chat_log: List[Dict[str, str]] = []
+        self.history: List[types.Content] = []
+        self.chat_log: List[Dict[str, str]] = []
+        self._load_history()
 
-    # def clear_history(self):
-    #     """Clears conversation history and chat logs."""
-    #     self.history = []
-    #     self.chat_log = []
+    def _load_history(self):
+        """Loads persisted conversation history from disk (JSON)."""
+        try:
+            if HISTORY_FILE.exists():
+                data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+                self.chat_log = data.get("chat_log", [])
+                # Rebuild Gemini Content history from the persisted log
+                self.history = []
+                for entry in self.chat_log:
+                    self.history.append(types.Content(role="user", parts=[types.Part.from_text(text=entry.get("user", ""))]))
+                    self.history.append(types.Content(role="model", parts=[types.Part.from_text(text=entry.get("assistant", ""))]))
+        except Exception as e:
+            console.print(f"[dim yellow]Warning: Could not load chat history: {e}[/dim yellow]")
+            self.chat_log = []
+            self.history = []
+
+    def _save_history(self):
+        """Persists conversation history to disk (JSON)."""
+        try:
+            HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+            HISTORY_FILE.write_text(
+                json.dumps({"chat_log": self.chat_log}, indent=2),
+                encoding="utf-8"
+            )
+        except Exception as e:
+            console.print(f"[dim yellow]Warning: Could not save chat history: {e}[/dim yellow]")
+
+    def clear_history(self):
+        """Clears conversation history and chat logs (memory + disk)."""
+        self.history = []
+        self.chat_log = []
+        try:
+            if HISTORY_FILE.exists():
+                HISTORY_FILE.unlink()
+        except Exception:
+            pass
 
     def call_gemini_safe(
         self,
@@ -129,4 +168,5 @@ class GeminiEngine:
         # Keep successfully completed multi-turn interaction in the session history
         self.history = contents
         self.chat_log.append({"user": user_input, "assistant": final_text})
+        self._save_history()
         return final_text

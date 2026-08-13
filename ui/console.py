@@ -51,6 +51,8 @@ def print_help():
     help_table.add_row("[bold yellow]/doc <path>[/bold yellow]", "Load & index PDF, DOCX, PPTX, EPUB, MD, TXT, HTML")
     help_table.add_row("[bold yellow]/doc list[/bold yellow]", "List all stored documents in vector store")
     help_table.add_row("[bold yellow]/doc switch <number/id>[/bold yellow]", "Switch active document session")
+    help_table.add_row("[bold yellow]/history[/bold yellow] or [bold yellow]/hist[/bold yellow]", "Show conversation history")
+    help_table.add_row("[bold yellow]/new[/bold yellow] or [bold yellow]/reset[/bold yellow]", "Clear conversation history and start fresh")
     help_table.add_row("[bold yellow]/voice[/bold yellow] or [bold yellow]/text[/bold yellow]", "Toggle Speech-to-Text (STT) input")
     help_table.add_row("[bold yellow]/talk[/bold yellow] or [bold yellow]/mute[/bold yellow]", "Toggle Text-to-Speech (TTS) output")
     help_table.add_row("[bold yellow]/exit[/bold yellow]  or  [bold yellow]q[/bold yellow]", "Exit active mode back to General Chat")
