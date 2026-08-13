@@ -7,16 +7,18 @@ from config.settings import GEMINI_MODEL, THEME_PRIMARY, THEME_SECONDARY, THEME_
 
 console = Console()
 
-def display_banner():
+def display_banner(stt_enabled=False, tts_enabled=False):
     """Renders the top banner for BLACKY AI CLI."""
     title = f"[bold {THEME_PRIMARY}]✦ BLACKY AI ✦[/bold {THEME_PRIMARY}]"
     subtitle = "[dim]Niri Terminal Companion[/dim]"
+    stt_status = "[bold green]ON[/bold green]" if stt_enabled else "[bold red]OFF[/bold red]"
+    tts_status = "[bold green]ON[/bold green]" if tts_enabled else "[bold red]OFF[/bold red]"
     badges = (
         f"[cyan]/stock[/cyan] Market Analyst  •  "
         f"[yellow]/yt[/yellow] YouTube Agent  •  "
         f"[cyan]/doc[/cyan] Document RAG  •  "
-        f"[blue]MCP[/blue] Automatic Search  •  "
-        f"[green]/help[/green] Commands"
+        f"[magenta]Voice[/magenta] {stt_status}  •  "
+        f"[magenta]Speak[/magenta] {tts_status}"
     )
     footer = f"[dim]model:[/dim] [bold white]{GEMINI_MODEL}[/bold white]"
     banner = Table.grid(padding=(0, 1))
@@ -49,6 +51,8 @@ def print_help():
     help_table.add_row("[bold yellow]/doc <path>[/bold yellow]", "Load & index PDF, DOCX, PPTX, EPUB, MD, TXT, HTML")
     help_table.add_row("[bold yellow]/doc list[/bold yellow]", "List all stored documents in vector store")
     help_table.add_row("[bold yellow]/doc switch <number/id>[/bold yellow]", "Switch active document session")
+    help_table.add_row("[bold yellow]/voice[/bold yellow] or [bold yellow]/text[/bold yellow]", "Toggle Speech-to-Text (STT) input")
+    help_table.add_row("[bold yellow]/talk[/bold yellow] or [bold yellow]/mute[/bold yellow]", "Toggle Text-to-Speech (TTS) output")
     help_table.add_row("[bold yellow]/exit[/bold yellow]  or  [bold yellow]q[/bold yellow]", "Exit active mode back to General Chat")
     help_table.add_row("[bold yellow]/clear[/bold yellow]", "Clear terminal screen")
     help_table.add_row("[bold yellow]/help[/bold yellow]", "Show this command directory")

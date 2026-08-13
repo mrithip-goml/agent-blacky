@@ -17,6 +17,13 @@ class GeminiEngine:
         self.client = genai.Client(api_key=self.api_key)
         self.model = model or GEMINI_MODEL
         self.mcp_manager = mcp_manager
+    #     self.history: List[types.Content] = []
+    #     self.chat_log: List[Dict[str, str]] = []
+
+    # def clear_history(self):
+    #     """Clears conversation history and chat logs."""
+    #     self.history = []
+    #     self.chat_log = []
 
     def call_gemini_safe(
         self,
@@ -67,8 +74,11 @@ class GeminiEngine:
                 console.print(f"[dim yellow]Warning: Failed to load MCP tool declarations: {e}[/dim yellow]")
                 mcp_tools = None
 
-        contents = [types.Content(role="user", parts=[types.Part.from_text(text=user_input)])]
+        # Initialize contents with existing session history
+        contents = list(self.history)
+        contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
         current_turn = 0
+        final_text = ""
 
         while current_turn < max_turns:
             current_turn += 1
@@ -92,7 +102,8 @@ class GeminiEngine:
                 function_calls = [p.function_call for p in candidate.content.parts if p.function_call]
 
             if not function_calls:
-                return response.text.strip() if (hasattr(response, "text") and response.text) else "No response generated."
+                final_text = response.text.strip() if (hasattr(response, "text") and response.text) else "No response generated."
+                break
 
             # Execute tool calls requested by Gemini
             fn_parts = []
@@ -112,4 +123,10 @@ class GeminiEngine:
 
             contents.append(types.Content(role="user", parts=fn_parts))
 
-        return "Reached maximum turn limit for tool calls."
+        if current_turn >= max_turns and not final_text:
+            final_text = "Reached maximum turn limit for tool calls."
+
+        # Keep successfully completed multi-turn interaction in the session history
+        self.history = contents
+        self.chat_log.append({"user": user_input, "assistant": final_text})
+        return final_text
